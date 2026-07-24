@@ -4,6 +4,8 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 import pandas as pd
 import math
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # ==========================
 # KONEKSI GOOGLE SHEETS
@@ -120,7 +122,7 @@ if st.button(
         last_no += 1
         last_ord += 1
 
-        now = datetime.now()
+        now = datetime.now(ZoneInfo("Asia/Jakarta"))
 
         tanggal = f"{now.month}/{now.day}/{now.year} {now.strftime('%H:%M:%S')}"
 
