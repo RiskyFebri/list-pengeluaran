@@ -8,14 +8,13 @@ import math
 # ==========================
 # KONEKSI GOOGLE SHEETS
 # ==========================
-scope = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets"
 ]
 
-creds = Credentials.from_service_account_file(
-    "service_account.json",
-    scopes=scope
+creds = Credentials.from_service_account_info(
+    st.secrets["gcp_service_account"],
+    scopes=SCOPES
 )
 
 client = gspread.authorize(creds)
