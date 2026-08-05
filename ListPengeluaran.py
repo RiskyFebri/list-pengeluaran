@@ -8,7 +8,50 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import calendar
 import plotly.express as px
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 
+
+def update_transaction(id_pengeluaran, pengeluaran, harga, kategori):
+
+    records = sheet.get_all_records()
+
+    for i, record in enumerate(records):
+
+        if record["ID Pengeluaran"] == id_pengeluaran:
+
+            row_number = i + 2   # +1 header, +1 karena index mulai 0
+
+            sheet.update(
+                f"D{row_number}:F{row_number}",
+                [[
+                    pengeluaran,
+                    harga,
+                    kategori
+                ]]
+            )
+
+            load_data.clear()
+            return True
+
+    return False
+
+def delete_transaction(id_pengeluaran):
+
+    records = sheet.get_all_records()
+
+    for i, record in enumerate(records):
+
+        if record["ID Pengeluaran"] == id_pengeluaran:
+
+            row_number = i + 2
+
+            sheet.delete_rows(row_number)
+
+            load_data.clear()
+
+            return True
+
+    return False
 
 # ==========================
 # KONFIGURASI HALAMAN
@@ -28,16 +71,16 @@ SCOPES = [
 ]
 
 #SECRETS STREAMLIT
-creds = Credentials.from_service_account_info(
-    st.secrets["gcp_service_account"],
-    scopes=SCOPES
-)
-
-#LOCALHOST
-#creds = Credentials.from_service_account_file(
-#    "service_account.json",
+#creds = Credentials.from_service_account_info(
+#    st.secrets["gcp_service_account"],
 #    scopes=SCOPES
 #)
+
+#LOCALHOST
+creds = Credentials.from_service_account_file(
+    "service_account.json",
+    scopes=SCOPES
+)
 
 
 client = gspread.authorize(creds)
@@ -203,6 +246,7 @@ if keyword:
 
 df = df[
     [
+        "ID Pengeluaran",
         "Tanggal",
         "Pengeluaran",
         "Harga",
@@ -226,60 +270,244 @@ df["Harga"] = pd.to_numeric(df["Harga"], errors="coerce")
 # Pagination
 # ==========================
 
-ROWS_PER_PAGE = 10
+page_df = df.copy()
 
-if "page" not in st.session_state:
-    st.session_state.page = 1
+page_df["Tanggal"] = pd.to_datetime(
+    page_df["Tanggal"]
+).dt.strftime("%d %b %Y")
 
-total_rows = len(df)
-total_pages = max(math.ceil(total_rows / ROWS_PER_PAGE), 1)
+gb = GridOptionsBuilder.from_dataframe(page_df)
 
-# Kalau hasil search berkurang, pastikan page tidak melebihi total halaman
-if st.session_state.page > total_pages:
-    st.session_state.page = total_pages
+gb.configure_default_column(
+    sortable=True,
+    filter=True,
+    resizable=True,
+)
 
-start = (st.session_state.page - 1) * ROWS_PER_PAGE
-end = start + ROWS_PER_PAGE
+gb.configure_grid_options(
+    suppressCellFocus=True,
+    rowHeight=28,
+    headerHeight=42,
+)
 
-page_df = df.iloc[start:end]
+gb.configure_column(
+    "ID Pengeluaran",
+    width=120
+)
 
-table_height = min(len(page_df) * 35 + 40, 420)
+gb.configure_column(
+    "Tanggal",
+    width=120
+)
 
-st.dataframe(
-    page_df,
-    use_container_width=True,
-    hide_index=True,
-    height=table_height,
-    column_config={
-        "Harga": st.column_config.NumberColumn(
-            "Harga",
-            format="Rp %.0f"
-        )
+gb.configure_column(
+    "Pengeluaran",
+    width=250
+)
+
+gb.configure_column(
+    "Harga",
+    width=120,
+    type=["numericColumn"],
+    valueFormatter="""
+        value == null
+        ? ''
+        : 'Rp ' + Number(value).toLocaleString('id-ID')
+    """
+)
+
+gb.configure_column(
+    "Kategori",
+    width=90
+)
+
+gb.configure_selection(
+    selection_mode="single",
+    use_checkbox=False
+)
+
+gb.configure_pagination(
+    enabled=True,
+    paginationAutoPageSize=False,
+    paginationPageSize=20
+)
+
+grid_options = gb.build()
+
+# Cukup definisikan 1 string CSS gabungan ini:
+css_auto = """
+/* Default (Light Mode) */
+.ag-root-wrapper {
+    background-color: white !important;
+    border: 1px solid #DDDDDD !important;
+    border-radius: 10px !important;
+}
+.ag-header, .ag-header-cell {
+    background-color: #F5F5F5 !important;
+    color: #222222 !important;
+    font-weight: 600 !important;
+}
+.ag-cell {
+    background-color: white !important;
+    color: #222222 !important;
+}
+.ag-row-hover .ag-cell {
+    background-color: #F3F7FC !important;
+}
+.ag-row-selected .ag-cell {
+    background-color: #D6EAF8 !important;
+}
+
+/* Auto Dark Mode (Terdeteksi via Browser/Sistem) */
+@media (prefers-color-scheme: dark) {
+    .ag-root-wrapper {
+        background-color: #0E1117 !important;
+        border: 1px solid #31333F !important;
     }
+    .ag-header, .ag-header-cell {
+        background-color: #1E1E1E !important;
+        color: white !important;
+    }
+    .ag-cell {
+        background-color: #0E1117 !important;
+        color: white !important;
+    }
+    .ag-row-hover .ag-cell {
+        background-color: #1F2937 !important;
+    }
+    .ag-row-selected .ag-cell {
+        background-color: #0B5EA8 !important;
+    }
+}
+"""
+
+# Panggil AgGrid tanpa mengandalkan st.get_option("theme.base") lagi
+grid_response = AgGrid(
+    page_df,
+    gridOptions=grid_options,
+    height=634,
+    fit_columns_on_grid_load=True,
+    theme="streamlit",
+    custom_css=css_auto,
 )
 
-st.caption(
-    f"Menampilkan {start+1}-{min(end, total_rows)} dari {total_rows} transaksi"
-)
+# ==========================
+# Ambil data yang dipilih
+# ==========================
 
-col1, col2, col3 = st.columns([1,2,1])
+grid_state = grid_response.grid_state
 
-with col1:
-    if st.button("◀ Sebelumnya", disabled=st.session_state.page == 1):
-        st.session_state.page -= 1
-        st.rerun()
+selected_index = []
 
-with col2:
-    st.markdown(
-        f"<div style='text-align:center'><b>Halaman {st.session_state.page} / {total_pages}</b></div>",
-        unsafe_allow_html=True
-    )
+if grid_state is not None:
+    selected_index = grid_state.get("rowSelection", [])
 
-with col3:
-    if st.button("Berikutnya ▶", disabled=st.session_state.page == total_pages):
-        st.session_state.page += 1
-        st.rerun()
+if selected_index:
 
+    row = page_df.iloc[int(selected_index[0])]
+
+    st.divider()
+    st.subheader("📄 Detail Transaksi")
+
+    st.write(f"**ID** : {row['ID Pengeluaran']}")
+    st.write(f"**Tanggal** : {row['Tanggal']}")
+    st.write(f"**Pengeluaran** : {row['Pengeluaran']}")
+    st.write(f"**Harga** : Rp {int(row['Harga']):,}".replace(",", "."))
+    st.write(f"**Kategori** : {row['Kategori']}")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("✏ Edit", use_container_width=True):
+            st.session_state.edit_mode = True
+
+    with col2:
+        if st.button("🗑 Delete", use_container_width=True):
+            st.session_state.delete_mode = True
+
+    # ==========================
+    # FORM EDIT
+    # ==========================
+
+    if st.session_state.get("edit_mode", False):
+
+        with st.form("edit_form"):
+
+            nama = st.text_input(
+                "Pengeluaran",
+                value=row["Pengeluaran"]
+            )
+
+            harga = st.number_input(
+                "Harga",
+                value=int(row["Harga"])
+            )
+
+            kategori = st.selectbox(
+                "Kategori",
+                ["A", "B", "C", "D"],
+                index=["A", "B", "C", "D"].index(row["Kategori"])
+            )
+
+            simpan = st.form_submit_button(
+                "💾 Simpan Perubahan",
+                use_container_width=True
+            )
+
+            if simpan:
+
+                berhasil = update_transaction(
+
+                    row["ID Pengeluaran"],
+                    nama,
+                    harga,
+                    kategori
+                )
+
+                if berhasil:
+
+                    st.success("✅ Data berhasil diperbarui")
+
+                    st.session_state.edit_mode = False
+
+                    st.rerun()
+
+                else:
+
+                    st.error("ID tidak ditemukan.")
+
+    # ==========================
+    # DELETE
+    # ==========================
+
+    if st.session_state.get("delete_mode", False):
+
+        st.warning("Yakin ingin menghapus transaksi ini?")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("✅ Ya, Hapus", use_container_width=True):
+
+                berhasil = delete_transaction(
+                    row["ID Pengeluaran"]
+                )
+
+                if berhasil:
+
+                    st.success("✅ Data berhasil dihapus")
+
+                    st.session_state.delete_mode = False
+
+                    st.rerun()
+
+                else:
+
+                    st.error("ID tidak ditemukan.")
+
+        with col2:
+            if st.button("Batal", use_container_width=True):
+                st.session_state.delete_mode = False
 
 # ==========================
 # PREPARE DATA DASHBOARD
@@ -412,7 +640,7 @@ with left:
 
 with right:
 
-    st.subheader("📊 Ringkasan Bulan")
+    st.subheader("📊 Ringkasan Bulanan")
 
     total = int(df["Harga"].sum())
     total_trx = len(df)
