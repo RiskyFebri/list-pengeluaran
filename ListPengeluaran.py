@@ -71,16 +71,16 @@ SCOPES = [
 ]
 
 #SECRETS STREAMLIT
-#creds = Credentials.from_service_account_info(
-#    st.secrets["gcp_service_account"],
-#    scopes=SCOPES
-#)
-
-#LOCALHOST
-creds = Credentials.from_service_account_file(
-    "service_account.json",
+creds = Credentials.from_service_account_info(
+    st.secrets["gcp_service_account"],
     scopes=SCOPES
 )
+
+#LOCALHOST
+#creds = Credentials.from_service_account_file(
+#    "service_account.json",
+#    scopes=SCOPES
+#)
 
 
 client = gspread.authorize(creds)
